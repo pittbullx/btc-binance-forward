@@ -1,0 +1,51 @@
+name: BTC Binance Futures - pesquisa forward (somente leitura)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - binance_forward.py
+      - .github/workflows/binance-btc-forward.yml
+  workflow_dispatch:
+    inputs:
+      smoke:
+        description: "Somente testar Binance; nenhuma gravacao no Sheets"
+        required: false
+        type: boolean
+        default: true
+  schedule:
+    - cron: "5,20,35,50 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: btc-binance-forward
+  cancel-in-progress: false
+
+jobs:
+  collector:
+    if: ${{ github.event_name != 'schedule' || vars.BTC_BIN_COLLECT_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate script syntax
+        run: python -m py_compile binance_forward.py
+      - name: Run Binance smoke or forward collection
+        env:
+          BTC_BIN_WEBAPP_URL: ${{ secrets.BTC_BIN_WEBAPP_URL }}
+          BTC_BIN_INGEST_SECRET: ${{ secrets.BTC_BIN_INGEST_SECRET }}
+          EVENT_KIND: ${{ github.event_name }}
+          SMOKE_REQUESTED: ${{ inputs.smoke }}
+        run: |
+          if [[ "$EVENT_KIND" == "push" || "$SMOKE_REQUESTED" == "true" ]]; then
+            python binance_forward.py --smoke
+          else
+            python binance_forward.py
+          fi
